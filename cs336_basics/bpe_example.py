@@ -7,10 +7,12 @@ dic = {}
 def __init__():
     for i in range(257):
         if i == 256:
-            dic[bytes("<|endoftext|>".encode("utf-8"))] = 256
+            dic[b"<|endoftext|>"] = 256
+            # dic[bytes("<|endoftext|>".encode("utf-8"))] = 256
             continue
         # 按值编码来初始化词汇表
-        dic[bytes(chr(i).encode("utf-8"))] = i
+        dic[bytes([i])] = i
+        # dic[bytes(chr(i).encode("utf-8"))] = i
 
 # 频率表，每次更新
 count = defaultdict(int)
@@ -25,9 +27,9 @@ def pre_tokenization(text: string):
     # 通过items来获得键与值
     for (word, coun) in sum_word.items():
         tup = ()
-        for ch in word:
+        for byte in word.encode("utf-8"):
             # 通过 * 解开元组并与之后的字符包含在一起
-            tup = (*tup, bytes(ch.encode("utf-8")))
+            tup = (*tup, bytes([byte]))
         count[tup] = coun
     return count
 
@@ -36,16 +38,10 @@ def merge():
     # 1. 遍历分词表来获得每一个互相邻字节的出现次数(不跨元组)
     sum_neighbor = defaultdict(int)
     # 通过两个窗口的滑动窗口来统计
-    for (word, coun) in count.items():
-        pre = bytes()
-        now = bytes()
-        for (idx, ch) in enumerate(word):
-            if idx == 0:
-                pre = ch
-                continue
-            now = ch
-            sum_neighbor[(pre.decode("utf-8"), now.decode("utf-8"))] += coun
-            pre = now
+    for word, coun in count.items():
+        for i in range(len(word) - 1):
+            pair = (word[i], word[i + 1])
+            sum_neighbor[pair] += coun
     if len(sum_neighbor) <= 0:
         return
     # 2. 排序选出出现次数最多的互相邻字节
@@ -54,9 +50,9 @@ def merge():
     # 3. 合并出现次数最多的互相邻字节
     # 先更新词汇表
     best_pair = sum_neighbor_sorted[0][0]
-    best_pair = "".join(best_pair).encode("utf-8")
+    best_pair = b"".join(best_pair)
     dic[best_pair] = len(dic)
-    best_pair = (sum_neighbor_sorted[0][0][0].encode("utf-8"), sum_neighbor_sorted[0][0][1].encode("utf-8"))
+    best_pair = (sum_neighbor_sorted[0][0][0], sum_neighbor_sorted[0][0][1])
     target = b"".join(best_pair)
     new_count = defaultdict(int)
     # 开始在count中合并
