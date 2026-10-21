@@ -7,50 +7,89 @@ dic = {}
 def __init__():
     for i in range(257):
         if i == 256:
-            dic[bytes("<|endoftext|>".encode("utf-8"))] = 0
+            dic[bytes("<|endoftext|>".encode("utf-8"))] = 256
             continue
+        # 按值编码来初始化词汇表
         dic[bytes(chr(i).encode("utf-8"))] = i
 
-# 设置预分词匹配正则表达式
-PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 # 频率表，每次更新
 count = defaultdict(int)
-# 预分词
-def pre_tokenization(text: string):
-    # 1. 通过正则表达式预分词
-    for m in re.finditer(PAT, text):
-        # 2. 根据找出来的每一个预分词转化为tuple元组(占内存更少，结构更加轻量)，并将这些元组插入到频率表中
-        temp = tuple()
-        for t in m.group().strip():
-            temp = tuple((*temp, bytes(t.encode("utf-8"))))
-        count[tuple(temp)] += 1
 
-    # 3. 返回频率表
+# 预分词
+def pre_tokenization(text: string):   
+    # bpe_example示例按文档来，只按照空格进行分词
+    sub_word = text.split(" ")
+    sum_word = defaultdict(int)
+    for word in sub_word:
+        sum_word[word] += 1
+    # 通过items来获得键与值
+    for (word, coun) in sum_word.items():
+        tup = ()
+        for ch in word:
+            # 通过 * 解开元组并与之后的字符包含在一起
+            tup = (*tup, bytes(ch.encode("utf-8")))
+        count[tup] = coun
     return count
 
 def merge():
-    # 1. 遍历字典，取得字典中的key元素，两两组合在一起统计出现次数(后续可以转为大根堆实现)]
-    key_count = defaultdict(int)
-    for key in count:
-        for j in range(len(key)):
-            if j == 0:
-                begin = key[j]
+    global count
+    # 1. 遍历分词表来获得每一个互相邻字节的出现次数(不跨元组)
+    sum_neighbor = defaultdict(int)
+    # 通过两个窗口的滑动窗口来统计
+    for (word, coun) in count.items():
+        pre = bytes()
+        now = bytes()
+        for (idx, ch) in enumerate(word):
+            if idx == 0:
+                pre = ch
                 continue
-            end = key[j]
-            key_count[(begin, end)] += count[key]
-            begin = end
-    # 2. 选取频次最高的组合(频次相同的选择字典序最高的一组)合并到词汇表中
-    sorted_key_count = sorted(key_count.items(), key=lambda item: (item[1], item[0][0], item[0][1]), reverse=True)
-    ad2dic = b''.join(sorted_key_count[0][0])
-    dic[ad2dic] = len(dic)
-    # 3. 更新频次表
+            now = ch
+            sum_neighbor[(pre.decode("utf-8"), now.decode("utf-8"))] += coun
+            pre = now
+    if len(sum_neighbor) <= 0:
+        return
+    # 2. 排序选出出现次数最多的互相邻字节
+    sum_neighbor_sorted = sorted(sum_neighbor.items(), key=lambda x:(x[1], x[0]), reverse=True)
 
+    # 3. 合并出现次数最多的互相邻字节
+    # 先更新词汇表
+    best_pair = sum_neighbor_sorted[0][0]
+    best_pair = "".join(best_pair).encode("utf-8")
+    dic[best_pair] = len(dic)
+    best_pair = (sum_neighbor_sorted[0][0][0].encode("utf-8"), sum_neighbor_sorted[0][0][1].encode("utf-8"))
+    target = b"".join(best_pair)
+    new_count = defaultdict(int)
+    # 开始在count中合并
+    for word, freq in count.items():
+        if keyINWords(best_pair, word):
+            new_word = ()
+            i = 0
+            while i < len(word):
+                if i + 1 < len(word) and word[i] == best_pair[0] and word[i + 1] == best_pair[1]:
+                    new_word += (target, )
+                    i += 2
+                else:
+                    new_word += (word[i], )
+                    i += 1
+            new_count[new_word] += freq
+        else:
+            new_count[word] += freq
+    count = new_count
 
-    pass
+def keyINWords(key, words):
+    for ch in key:
+        if ch in words:
+            continue
+        return False
+    return True
 def main():
-    pre_tokenization("""low low low low low lower lower widest widest widest newest newest newest newest newest newest""")
+    str = "low low low low low lower lower widest widest widest newest newest newest newest newest newest"
+    pre_tokenization(str)
+    for i in range(6):
+        merge()
+    print(dic)
     print(count)
-    merge()
+
 if __name__ == '__main__':
     __init__()
     main()
