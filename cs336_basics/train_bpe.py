@@ -1,8 +1,9 @@
 from collections import Counter, defaultdict
-from cs336_basics import pretokenization_example
+import pretokenization_example
 import regex as re
 import multiprocess
-
+import json
+from pathlib import Path
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
@@ -202,6 +203,28 @@ class BPE:
         vocab = {v: k for k, v in self.dic.items()}
         return vocab, self.merges
 
+def save_bpe(vocab, merges, output_dir="output"):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 将 bytes 转换为十六进制字符串
+    vocab_data = {
+        str(token_id): token.decode("utf-8", errors="ignore")
+        for token_id, token in vocab.items()
+    }
+
+    merges_data = [
+        [left.decode('latin-1'), right.decode('latin-1')]
+        for left, right in merges
+    ]
+
+    # 保存词表
+    with open(output_dir / "vocab.json", "w", encoding="utf-8") as f:
+        json.dump(vocab_data, f, ensure_ascii=False, indent=2)
+
+    # 保存合并规则
+    with open(output_dir / "merges.json", "w", encoding="utf-8") as f:
+        json.dump(merges_data, f, ensure_ascii=False, indent=2)
 
 def __main__():
     bpe = BPE(
@@ -213,9 +236,7 @@ def __main__():
         "../data/TinyStoriesV2-GPT4-valid.txt",
         workers=8
     )
-
-    print("Vocabulary:", vocab)
-    print("Merges:", merges)
+    save_bpe(vocab, merges, output_dir="output")
 
 
 if __name__ == "__main__":
